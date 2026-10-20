@@ -1,0 +1,16 @@
+
+# LaTeX build intermediates
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
+.github/agents
+__pycache__/
+*.py[codz]
+*$py.class
+
+docs/project_deliverables.log
