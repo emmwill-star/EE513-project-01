@@ -2,9 +2,50 @@
 \usepackage{graphicx} % Required for inserting images
 \usepackage{amsmath,amssymb,amsthm,amsfonts}
 \usepackage[margin=1in]{geometry}
-\usepackage{hyperref}
+
+% --- FIX COMPILATION ERROR HERE ---
+\usepackage[hypertexnames=false]{hyperref} 
+
 \usepackage{txfonts}
 \usepackage{float}
+\usepackage{jsonparse}
+\usepackage{booktabs} % For clean table formatting
+\usepackage{siunitx}
+
+\JSONParseFromFile{\results}{../results.json} % import results JSON
+
+% Format unmeasured JSON values without passing null to siunitx.
+\ExplSyntaxOn
+\NewDocumentCommand{\SafeNum}{m}{
+    \str_if_eq:eeTF { #1 } { null }
+        { \textemdash }
+        { \num{#1} }
+}
+\ExplSyntaxOff
+
+% Measurement arrays contain [value, uncertainty], using zero-based indices.
+\newcommand{\JSONRow}[3]{%
+    \texttt{#1} &
+    \SafeNum{\JSONParseExpandableValue{\results}{#2[0]}} &
+    \SafeNum{\JSONParseExpandableValue{\results}{#2[1]}} &
+    #3 \\
+}
+
+% 3. Map the comma-separated list parser
+\ExplSyntaxOn
+\cs_new:Npn \json_row:n #1 { \JSONRow #1 }
+
+\NewExpandableDocumentCommand{\JSONRows}{m}{
+    \clist_map_function:nN {#1} \json_row:n
+}
+\ExplSyntaxOff
+
+\sisetup{
+    round-mode = places,
+    round-precision = 3,
+    round-pad = true
+}
+
 \newcommand{\overunder}[2]{\mathrel{\operatorname*{\gtrless}_{#2}^{#1}}}
 % $\overunder{a}{v}$
 %  \begin{figure}[H]
@@ -14,7 +55,7 @@
 %     \label{}
 % \end{figure}
 
-\title{513 Project 1}
+\title{513 Project 1 Datasheet}
 
 \author{Emmett Williamson}
 \date{\today}
@@ -23,14 +64,338 @@
 
 \maketitle
 
-\subsection*{Deliverable 1}
- 
-\subsection*{Deliverable 2}
+\subsubsection*{Github Repository}
+\url{https://github.com/emmwill-star/EE513-project-01}
 
-\subsection*{Deliverable 3}
+\subsubsection*{Resume Line}
+Developed and tested a calibration pipeline for camera systems.  Pipeline determines intrinsic camera geometry, 
+MTF50, noise, dynamic range, and color correction.
 
-\subsection*{Deliverable 4}
+\subsection*{Decisions and Verification}
+\subsubsection*{LLM Usage}
+I used a mixture of Agentic and Code focused LLM tools including Snowflake Cortex Code and Github Copilot.
+The tools were used to trace calculations through the notebook, create helper functions, 
+draft the report check uncertainty definitions and compare results with manufacturer 
+information. AI assisted checks included independent recalculation of selected summaries and LaTeX compilation. 
+All automated tests were created by the AI tools.  I worked by questioning the results and 
+asking for further information and explanation when I did not understand the results.
 
-\subsection*{Deliverable 5}
+\subsubsection*{Deliverable 1}
+I chose subpixel checkerboard calibration with radial and tangential distortion, keeping images 
+in consistent sensor coordinates and fixing the third radial coefficient. I rejected treating fit 
+errors as a complete uncertainty budget or comparing physical focal length directly with Apple’s 
+equivalent focal length. Existing tests check zero residuals for a straight grid, correction of synthetic 
+distortion, image dimension ordering and reprojection error against known offsets. The notebook also compares 
+original and corrected checkerboard straightness. 
+
+\subsubsection*{Deliverable 2}
+I used black subtracted RAW green samples and slanted edge MTF, avoiding demosaicing and gamma processing. 
+I reported frequencies per original RAW pixel and selected the worst corner by its average across captures, 
+not by averaging individual minima. Existing tests cover synthetic target selection, uneven illumination, missing targets, 
+batch completeness, frequency scaling and worst corner aggregation. Recomputed summaries agreed with the saved results. 
+Review established that pooled corner spread mixes spatial variation with repeatability.
+
+\subsubsection*{Deliverable 3}
+I chose paired frame variance to suppress common fixed pattern and used dark frame differences rather than the single frame 
+spatial variance intercept for read noise. Gain and dark current came from linear fits. Checks included comparison with single 
+frame results and conversion of the DNG vendor noise model into matching units. Review found that read noise uncertainty includes
+ only gain fit error, dark pairs share frames, and unequal exposures can introduce additional noise. Dark signals were also 
+ close to the black offset.
+
+\subsubsection*{Deliverable 4}
+I defined range using metadata saturation above black divided by the dark noise floor, with an explicit read only noise threshold. 
+I rejected the saved zero uncertainty because it resulted from taking the standard deviation of one scalar. 
+The report therefore labels the result provisional. 
+
+\subsubsection*{Deliverable 5}
+I chose per channel flat field correction, white balancing, capture averaging and a least squares color matrix evaluated 
+against the specified ColorChecker reference under D50. Existing tests check masked patch statistics against known values.
+Review found that the maximum error uncertainty incorrectly reused across patch spread; that error bar was rejected. 
+Because the same patches determine and evaluate the matrix, the improvement is in sample rather than independent validation.
+
+\begin{table}[htbp] % 1. Wrap everything in a 'table' environment
+    \centering      % 2. Centers the table on the page
+    
+    \caption{Sensor Properties and Capture Specifications.} % 3. Add caption here
+    \label{tab:camera_properties}                          % 4. Add label IMMEDIATELY after caption
+
+    \begin{tabular}{lll} 
+        \toprule
+        \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
+        \midrule
+        \texttt{Lens ID} & \JSONParseValue{\results}{camera} & \\
+        \texttt{App} & \JSONParseValue{\results}{capture_app} & \\
+        \texttt{CFA Pattern} & \JSONParseValue{\results}{cfa_pattern} & \\
+        \texttt{Raw Image Width} & \JSONParseValue{\results}{raw_width_px} & pixels \\
+        \texttt{Raw Image Height} & \JSONParseValue{\results}{raw_height_px} & pixels \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection*{Deliverable 1: Geometry Intrinsics and Lens Distortion}
+
+\noindent\textbf{Method.}
+\JSONParseValue{\results}{n_calibration_images_used} DNG captures
+are captured using the same rear camera and a $9\times6$ internal-corner checkerboard.
+Corners were refined to subpixel precision on demosaiced, unrotated images;
+\texttt{calibrateCameraExtended} determines the camera intrinsic parameters from the detected corners.
+The distortion model uses radial terms $1+k_1r^2+k_2r^4$ in normalized
+coordinates and tangential coefficients $p_1,p_2$; $k_3=0$ was fixed, and assumed to be negligible.
+ Checkerboard spacing was measured in mm using a ruler.  A speculative
+absolute uncertainty of 0.25 mm was used based on the precision of the ruler. Image dimensions
+and capture counts are exact metadata/counts, not uncertain measurements.
+
+\begingroup
+% Keep result values linked to JSON, rounding each pair to the same place.
+\newcommand{\DOneRow}[4]{%
+    #1 &
+    \num[round-precision=#4]{\JSONParseExpandableValue{\results}{#2[0]}} &
+    \num[round-precision=#4]{\JSONParseExpandableValue{\results}{#2[1]}} &
+    #3 \\
+}
+\begin{table}[H]
+    \centering
+    \caption{Geometry results. Uncertainties are fit standard deviations,
+    except the RMS row, which reports across-view scatter.}
+    \label{tab:d1}
+    \begin{tabular}{llll}
+        \toprule
+        \textbf{Parameter} & \textbf{Value} & \textbf{Uncertainty} & \textbf{Unit} \\
+        \midrule
+        \DOneRow{Mean focal length $\bar f$}{focal_length_px}{px}{1}
+        \DOneRow{Physical focal length (conditional)}{focal_length_mm}{mm}{2}
+        \DOneRow{Principal point $c_x$}{principal_point_x_px}{px}{1}
+        \DOneRow{Principal point $c_y$}{principal_point_y_px}{px}{1}
+        \DOneRow{Radial $k_1$}{distortion_k1}{dimensionless}{3}
+        \DOneRow{Radial $k_2$}{distortion_k2}{dimensionless}{3}
+        \DOneRow{Tangential $p_1$}{distortion_p1}{dimensionless}{4}
+        \DOneRow{Tangential $p_2$}{distortion_p2}{dimensionless}{4}
+        \DOneRow{Pooled reprojection RMS}{reprojection_rms_px}{px}{2}
+        \DOneRow{Checkerboard square size}{checkerboard_square_mm_measured}{mm}{2}
+        \bottomrule
+    \end{tabular}
+\end{table}
+\endgroup
+
+\noindent\textbf{Calculations and uncertainty.}
+Intrinsic uncertainties are OpenCV's approximate $1\sigma$ fit errors,
+not repeat-calibration standard deviations or full systematic bounds.
+The notebook averages the two focal lengths and propagates their errors:
+\[
+    \bar f=\frac{f_x+f_y}{2},\qquad
+    u(\bar f)=\frac{\sqrt{u(f_x)^2+u(f_y)^2}}{2},\qquad
+    f_{\rm mm}=p\bar f.
+\]
+The first propagation neglects axis covariance. The assumed
+$p=0.002\,\mathrm{mm/px}$ has no verified tolerance; hence the physical
+focal-length uncertainty is \emph{fit-only}, conditional on that scale.
+If pitch uncertainty were known, independent propagation would give
+$u(f_{\rm mm})^2=p^2u(\bar f)^2+\bar f^2u(p)^2$.
+Reprojection RMS pools squared Euclidean corner residuals over all views;
+its accompanying spread is \texttt{np.std(errorValues)} (population
+standard deviation of per-view RMS), not a confidence interval on the
+pooled RMS. The notebook's before/after straightness check is in-sample,
+not independent validation.
+
+\medskip
+\noindent\textbf{Manufacturer comparison.}
+\href{https://support.apple.com/en-us/121029}{Apple's iPhone 16 specification}
+lists a nominal $26\,\mathrm{mm}$ equivalent main lens, not its physical
+focal length, and gives no tolerance. Matching image diagonals to the
+$36\times24\,\mathrm{mm}$ reference format gives
+$f_{\rm eq}=\bar f\sqrt{36^2+24^2}/\sqrt{4032^2+3024^2}
+=(26.83\pm0.04)\,\mathrm{mm}$ (fit-only $1\sigma$),
+or $(3.19\pm0.16)\%$ above that nominal value.
+RAW versus advertised
+field-of-view/crop conventions, focus changes and calibration-model bias
+are possible contributors, but were not isolated or further tested.
+
+\subsection*{Deliverable 2: Spatial Resolution MTF}
+
+\noindent\textbf{Method.}
+Five DNG captures supplied black-subtracted samples from one Bayer green
+plane, without demosaicing or gamma encoding. Near-vertical target edges
+were selected at the center and four corners. Samples were aligned by
+perpendicular distance to a fitted edge and binned into a four-times-oversampled
+edge-spread function (ESF). Differentiation gives the line-spread function
+(LSF); its Hann-windowed Fourier magnitude is normalized at zero frequency:
+\[
+    \mathrm{MTF}(f)=\frac{|\mathcal{F}\{w\,\mathrm{LSF}\}(f)|}
+    {|\mathcal{F}\{w\,\mathrm{LSF}\}(0)|},\qquad
+    \mathrm{MTF}(f_{50})=0.5.
+\]
+The first downward half-response crossing is linearly interpolated.
+Green-plane spacing is twice the original RAW pixel pitch, so its axial
+Nyquist limit is $0.25$ cycles/original pixel. The pitch assumed for intermediate physical units cancels
+when converting back to cycles/original pixel.
+
+\begin{table}[H]
+    \centering
+    \caption{MTF50 in cycles/original RAW pixel; uncertainties are population
+    standard deviations, with pooling defined below.}
+    \label{tab:d2}
+    \begin{tabular}{llll}
+        \toprule
+        \textbf{Parameter} & \textbf{Value} & \textbf{Uncertainty} & \textbf{Unit} \\
+        \midrule
+        \JSONRows{
+            {Center MTF50}{mtf50_center_cy_per_px}{cycles/pixel},
+            {Corner Mean MTF50}{mtf50_corner_mean_cy_per_px}{cycles/pixel},
+            {Worst (Top-right) MTF50}{mtf50_corner_worst_cy_per_px}{cycles/pixel}
+        }
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent\textbf{Uncertainty and interpretation.}
+The reported uncertainties are population standard deviations.
+Center and worst-corner spreads each use five captures;
+the corner mean pools twenty values, mixing spatial variation with
+capture repeatability. The top-right corner has the lowest five-capture
+mean.
+Corners resolve less detail than the center in the tested edge direction.
+These are target-plus-camera green-channel responses, not isolated lens
+MTF; printed-edge quality, alignment, aliasing and estimator bias are not
+bounded by the reported scatter.
+
+\medskip
+\noindent\textbf{Manufacturer comparison.}
+\href{https://support.apple.com/en-us/121029}{Apple's published specification}
+provides no comparable MTF50 figure. Its nominal megapixel count describes
+sampling, not contrast transfer, so it cannot establish agreement with
+these RAW edge measurements.
+
+\subsection*{Deliverable 3: Noise}
+
+\noindent\textbf{Method.}
+At reference-capture ISO \JSONParseValue{\results}{iso_of_noise_measurement},
+central $128\times128$ green-sample patches from eleven flat-field pairs
+provided black-subtracted mean $\mu$ and temporal variance
+$v=\operatorname{Var}(A-B)/2$.
+Five levels within the selected linear range were fitted to $v=g\mu+b$;
+$g$ is conversion gain in DN/electron. Differencing suppresses common fixed
+pattern. Five dark captures supplied ten overlapping pairs, giving
+$\sigma_{\rm DN}=\sqrt{\langle v_{\rm dark}\rangle}$ and
+$\sigma_e=\sigma_{\rm DN}/g$. Dark current is the slope of mean
+black-subtracted dark signal in electrons versus exposure time.
+
+\begin{table}[H]
+    \centering
+    \caption{Noise results; uncertainty components are defined below.}
+    \label{tab:d3}
+    \begin{tabular}{llll}
+        \toprule
+        \textbf{Parameter} & \textbf{Value} & \textbf{Uncertainty} & \textbf{Unit} \\
+        \midrule
+        \JSONRows{
+            {Conversion Gain}{conversion_gain_dn_per_e}{DN/$e^-$},
+            {Read Noise (RMS)}{read_noise_e}{$e^-$},
+            {Dark Current}{dark_current_e_per_s}{$e^-$/pixel/s},
+            {Black Level}{black_level_dn}{DN},
+        }
+        White Level & 4095 & & DN \\
+        ISO & 40 & & \\
+        Vendor Noise Found & True & & \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent\textbf{Uncertainty and comparison.}
+Gain and dark-current uncertainties are $1\sigma$ slope standard errors
+from fit covariance; dark-current error holds gain fixed. Read-noise error
+is only $u(\sigma_e)=\sigma_e u(g)/g$, omitting uncertainty in the dark
+variance. Shared frames make the ten pairs non-independent; unequal
+exposures also admit dark-current shot noise and exposure-dependent
+pattern. Dark means lie close to the black offset, so the current slope
+is provisional and black-level drift is not bounded.
+
+The DNG vendor \texttt{NoiseProfile}, interpreted as normalized variance
+$a x+b_v$, predicts $g_v=aS\simeq0.344$ DN/$e^-$ and
+$\sigma_{e,v}=\sqrt{b_vS^2}/g_v\simeq10.26\,e^-$, where $S$ is the
+metadata white-minus-black range. These are nominal model predictions
+without supplied tolerances, both higher than the fitted results.
+The discrepancy may reflect central-patch selection, the restricted
+signal range or dark-frame conditions, but vendor characterization
+conditions are unspecified and the cause cannot be isolated.
+
+\subsection*{Deliverable 4: Dynamic Range}
+
+\noindent\textbf{Calculation and uncertainty.}
+Using metadata white level
+$W=\JSONParseValue{\results}{white_level_dn}$ DN and black level
+$B=\num[round-precision=0]{\JSONParseExpandableValue{\results}{black_level_dn[0]}}$ DN,
+the notebook defines $S=W-B$ and $D=\log_2(S/\sigma_{\rm DN})$.
+These code levels are metadata, not independently measured saturation or
+black-offset calibrations. The low end is one RMS dark-noise level:
+SNR unity in a read-noise-only convention, not exactly unity when shot
+noise is included.
+
+\begin{table}[H]
+    \centering
+    \caption{Provisional dynamic-range estimate; uncertainty is not established.}
+    \label{tab:d4}
+    \begin{tabular}{llll}
+        \toprule
+        \textbf{Parameter} & \textbf{Estimate} & \textbf{Uncertainty} & \textbf{Unit} \\
+        \midrule
+        Dynamic range &
+        \num[round-precision=2]{\JSONParseExpandableValue{\results}{dynamic_range_stops[0]}} &
+        Not estimated & stops \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The JSON zero uncertainty comes from applying \texttt{std} to a single
+scalar; it is not evidence of zero measurement error.  A defensible interval requires repeated
+noise-floor and saturation/offset characterization. Apple's cited
+specification gives no comparable single-frame RAW stop count; its HDR
+features do not validate this provisional estimate.
+
+\subsection*{Deliverable 5: Color Accuracy}
+
+\noindent\textbf{Method.}
+Three chart captures were black-subtracted, normalized and per-channel
+flat-field corrected, then their linear RGB patch means were averaged.
+White patch 19 supplied white-balance gains. The baseline treats balanced
+camera RGB as linear sRGB with Bradford adaptation to D50; it is not
+Apple's rendered color pipeline. A least-squares $3\times3$ matrix maps
+balanced camera RGB to reference XYZ. Both results are converted to Lab
+under D50 and evaluated using CIEDE2000 ($\Delta E_{00}$), against
+\emph{ColorChecker24 -- After November 2014}.
+
+\begin{table}[H]
+    \centering
+    \caption{Dimensionless color errors. Spread is across chart patches,
+    not measurement uncertainty; the maximum has no estimated uncertainty.}
+    \label{tab:d5}
+    \begingroup
+    \sisetup{round-precision=2}
+    \begin{tabular}{lll}
+        \toprule
+        \textbf{Parameter} & \textbf{Value} & \textbf{Uncertainty} \\
+        \midrule
+        Mean before matrix &
+        \SafeNum{\JSONParseExpandableValue{\results}{delta_e_mean_before_ccm[0]}} &
+        \SafeNum{\JSONParseExpandableValue{\results}{delta_e_mean_before_ccm[1]}} \\
+        Mean after matrix &
+        \SafeNum{\JSONParseExpandableValue{\results}{delta_e_mean_after_ccm[0]}} &
+        \SafeNum{\JSONParseExpandableValue{\results}{delta_e_mean_after_ccm[1]}} \\
+        Worst after (orange, patch 7) &
+        \SafeNum{\JSONParseExpandableValue{\results}{delta_e_worst_after_ccm[0]}} &
+        \SafeNum{\JSONParseExpandableValue{\results}{delta_e_worst_after_ccm[1]}} \\
+        \bottomrule
+    \end{tabular}
+    \endgroup
+\end{table}
+
+\noindent\textbf{Uncertainty and interpretation.}
+The listed spreads are population standard deviations across all 24
+patches, not confidence intervals on the mean or repeat-capture errors. 
+ The JSON's worst-patch error bar repeats the across-patch
+spread over all patches, and has the same uncertainty. All 24 patches were used for both fitting and evaluation:
+the reduced mean error demonstrates in-sample correction, not independent
+color accuracy. Illumination, chart-reference and flat-field errors remain
+unquantified. Apple's cited specification gives no comparable
+CIEDE2000 tolerance; wide-color support is not an accuracy guarantee.
 
 \end{document}

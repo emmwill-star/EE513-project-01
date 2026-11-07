@@ -1,0 +1,100 @@
+{
+  "_README": "EE 513 Project 1. Copy this file into your repository as results.json and replace every value with your own measurement. Each entry is [value, uncertainty] in the units named by the key. Use null for anything you did not measure; do not delete keys, and do not invent an uncertainty you cannot defend.",
+  "camera": "iPhone 16 back camera 5.96mm f/1.6",
+  "capture_app": "RawCam",
+  "cfa_pattern": "RGGB",
+  "raw_width_px": 4032,
+  "raw_height_px": 3024,
+  "binned_from_higher_resolution_sensor": false,
+  "focal_length_px": [
+    3125.3046982849087,
+    4.938544819071338
+  ],
+  "focal_length_mm": [
+    6.250609396569818,
+    0.009877089638142676
+  ],
+  "principal_point_x_px": [
+    1990.6982259772867,
+    7.121017787651302
+  ],
+  "principal_point_y_px": [
+    1524.697053133217,
+    8.346873342777833
+  ],
+  "distortion_k1": [
+    0.10608541713118554,
+    0.005384459773773064
+  ],
+  "distortion_k2": [
+    -0.1923127142561989,
+    0.01622277069708659
+  ],
+  "distortion_p1": [
+    0.003460610473936582,
+    0.001142641724933692
+  ],
+  "distortion_p2": [
+    -0.006813718115389477,
+    0.0009816285554831911
+  ],
+  "reprojection_rms_px": [
+    2.1073788982318873,
+    0.6050539612770081
+  ],
+  "n_calibration_images_used": 19,
+  "checkerboard_square_mm_measured": [
+    20,
+    0.25
+  ],
+  "mtf50_center_cy_per_px": [
+    0.22826544703359763,
+    0.00794326706202591
+  ],
+  "mtf50_corner_mean_cy_per_px": [
+    0.19075477422063086,
+    0.016815254001012726
+  ],
+  "mtf50_corner_worst_cy_per_px": [
+    0.17022022961032113,
+    0.006899442454143895
+  ],
+  "conversion_gain_dn_per_e": [
+    0.2619961559823211,
+    0.006120299917705606
+  ],
+  "read_noise_e": [
+    6.863010100436263,
+    0.16032174210886938
+  ],
+  "dark_current_e_per_s": [
+    2.8994464001813647,
+    0.5373503503041378
+  ],
+  "iso_of_noise_measurement": 40,
+  "black_level_dn": [
+    528.0,
+    0
+  ],
+  "white_level_dn": 4095,
+  "vendor_noiseprofile_present": true,
+  "dynamic_range_stops": [
+    10.954036472785619,
+    0.0
+  ],
+  "dynamic_range_criterion": " SNR = 1 at low end, saturation divided by read-noise floor",
+  "delta_e_metric": "CIEDE2000",
+  "colorchecker_reference_set": "ColorChecker24 - After November 2014",
+  "delta_e_mean_before_ccm": [
+    7.628426254865407,
+    3.685901268355592
+  ],
+  "delta_e_mean_after_ccm": [
+    2.141022101503417,
+    0.8828681718335649
+  ],
+  "delta_e_worst_after_ccm": [
+    3.5756179434602786,
+    0.8828681718335649
+  ]
+}
